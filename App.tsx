@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // --- Reusable UI Components ---
 
@@ -7,8 +7,15 @@ const SectionTitle: React.FC<{ title: string; className?: string }> = ({ title, 
     <h2 className={`text-lg font-bold text-gray-800 mb-4 border-b pb-2 ${className}`}>{title}</h2>
 );
 
-const InputField: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; placeholder?: string; }> = 
-({ label, name, value, onChange, placeholder }) => (
+const InputField: React.FC<{ 
+    label: string; 
+    name: string; 
+    value: string; 
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+    placeholder?: string;
+    [key: string]: any;
+ }> = 
+({ label, name, value, onChange, placeholder, ...rest }) => (
     <div>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}</label>
         <input
@@ -18,10 +25,12 @@ const InputField: React.FC<{ label: string; name: string; value: string; onChang
             value={value}
             onChange={onChange}
             placeholder={placeholder}
-            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm disabled:bg-gray-200 disabled:cursor-not-allowed"
+            {...rest}
         />
     </div>
 );
+
 
 // --- Purchase Order Specific Components ---
 
@@ -100,7 +109,7 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null }> = ({
 
             <section className="space-y-2 text-sm my-8">
                 <div className="border border-black p-2">
-                    Valor R${data.productValue} – {data.productValueText}
+                    Valor R${data.productValue.replace('R$', '').trim()} – {data.productValueText}
                 </div>
                 <div className="border border-black p-2">
                     Forma de pagamento: {data.paymentMethod}
@@ -129,6 +138,76 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null }> = ({
     </div>
 );
 
+// --- Helper Functions ---
+
+const numberToWordsPtBr = (num: number): string => {
+    if (num === null || num === undefined) return '';
+    
+    const units = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
+    const teens = ["dez", "onze", "doze", "treze", "catorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+    const tens = ["", "dez", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+    const hundreds = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+
+    const getExtensive = (n: number): string => {
+        if (n === 0) return "";
+        if (n === 100) return "cem";
+
+        let str = "";
+        const c = Math.floor(n / 100);
+        const d = Math.floor((n % 100) / 10);
+        const u = n % 10;
+
+        if (c > 0) {
+            str += hundreds[c];
+            if (d > 0 || u > 0) str += " e ";
+        }
+        if (d === 1 && u > 0) {
+            str += teens[u];
+        } else {
+            if (d > 0) {
+                str += tens[d];
+                if (u > 0) str += " e ";
+            }
+            if (u > 0) {
+                str += units[u];
+            }
+        }
+        return str;
+    };
+
+    const integerPart = Math.floor(num);
+    const decimalPart = Math.round((num - integerPart) * 100);
+    
+    let result = "";
+
+    if (integerPart > 0) {
+        const thousands = Math.floor(integerPart / 1000);
+        const rest = integerPart % 1000;
+        
+        if (thousands > 0) {
+            if (thousands === 1) {
+                result += "mil";
+            } else {
+                result += getExtensive(thousands) + " mil";
+            }
+            if (rest > 0) result += (rest < 100 || rest % 100 === 0) ? " e " : " ";
+        }
+
+        result += getExtensive(rest);
+        result += integerPart === 1 ? " real" : " reais";
+    }
+
+    if (decimalPart > 0) {
+        if (integerPart > 0) result += " e ";
+        result += getExtensive(decimalPart);
+        result += decimalPart === 1 ? " centavo" : " centavos";
+    }
+
+    if (result === "") return "zero";
+    
+    return result.charAt(0).toUpperCase() + result.slice(1);
+};
+
 
 // --- Main App Component ---
 
@@ -147,6 +226,7 @@ const App: React.FC = () => {
         clientAddress: '',
         clientNeighborhood: '',
         clientCity: '',
+        clientCep: '',
         clientPhone: '',
         clientCpf: '',
         clientRg: '',
@@ -160,12 +240,107 @@ const App: React.FC = () => {
     const [formData, setFormData] = useState(initialData);
     const [logoSrc, setLogoSrc] = useState<string | null>(null);
     const [isPrinting, setIsPrinting] = useState(false);
+    const [isFetchingCep, setIsFetchingCep] = useState(false);
+    const [deliveryTimeType, setDeliveryTimeType] = useState<'days' | 'date'>('days');
+
+    useEffect(() => {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        setFormData(prev => ({...prev, date: `${day}/${month}/${year}`}));
+    }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        let formattedValue = value;
+        const numbersOnly = value.replace(/\D/g, '');
+
+        if (name === 'clientCpf') {
+            formattedValue = numbersOnly
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+                .slice(0, 14);
+        } else if (name === 'clientPhone') {
+             if (numbersOnly.length <= 10) {
+                formattedValue = numbersOnly
+                    .replace(/(\d{2})(\d)/, '($1) $2')
+                    .replace(/(\d{4})(\d)/, '$1-$2')
+                    .slice(0, 14);
+            } else {
+                formattedValue = numbersOnly
+                    .replace(/(\d{2})(\d)/, '($1) $2')
+                    .replace(/(\d{5})(\d)/, '$1-$2')
+                    .slice(0, 15);
+            }
+        } else if (name === 'clientCep') {
+            formattedValue = numbersOnly
+                .replace(/(\d{5})(\d)/, '$1-$2')
+                .slice(0, 9);
+        } else if (name === 'date') {
+            formattedValue = numbersOnly
+                .replace(/(\d{2})(\d)/, '$1/$2')
+                .replace(/(\d{2})(\d)/, '$1/$2')
+                .slice(0, 10);
+        } else if (name === 'deliveryTime') {
+            if (deliveryTimeType === 'date') {
+                 if (value) { // value from date picker is 'YYYY-MM-DD'
+                    const [year, month, day] = value.split('-');
+                    formattedValue = `${day}/${month}/${year}`;
+                } else {
+                    formattedValue = '';
+                }
+            } else { // deliveryTimeType is 'days'
+                const dayValue = value.replace(/\D/g, '');
+                formattedValue = dayValue ? `${dayValue} dias` : '';
+            }
+            setFormData(prev => ({ ...prev, [name]: formattedValue }));
+            return; 
+        } else if (name === 'productValue') {
+            if (numbersOnly === '') {
+                setFormData(prev => ({ ...prev, productValue: '', productValueText: '' }));
+                return;
+            }
+            const numberValue = parseInt(numbersOnly, 10) / 100;
+            const currencyValue = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numberValue);
+            const textValue = numberToWordsPtBr(numberValue);
+
+            setFormData(prev => ({ ...prev, productValue: currencyValue, productValueText: textValue }));
+            return;
+        }
+        
+        setFormData(prev => ({ ...prev, [name]: formattedValue }));
     };
     
+    const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
+        const cep = e.target.value.replace(/\D/g, '');
+        if (cep.length !== 8) return;
+
+        setIsFetchingCep(true);
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+            if (!response.ok) throw new Error('CEP not found');
+            const data = await response.json();
+            if (data.erro) {
+                console.error("CEP inválido ou não encontrado.");
+                return;
+            }
+
+            setFormData(prev => ({
+                ...prev,
+                clientAddress: data.logradouro || '',
+                clientNeighborhood: data.bairro || '',
+                clientCity: `${data.localidade || ''}/${data.uf || ''}`,
+            }));
+            document.getElementById('clientAddress')?.focus();
+        } catch (error) {
+            console.error("Erro ao buscar CEP:", error);
+        } finally {
+            setIsFetchingCep(false);
+        }
+    };
+
     const handleProductChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         const updatedProducts = formData.products.map((product, i) =>
@@ -204,6 +379,22 @@ const App: React.FC = () => {
         if (fileInput) {
             fileInput.value = '';
         }
+    };
+
+    const handleDeliveryTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newType = e.target.value as 'days' | 'date';
+        setDeliveryTimeType(newType);
+        setFormData(prev => ({ ...prev, deliveryTime: '' }));
+    };
+
+    const handleQuickDays = (days: number) => {
+        setFormData(prev => ({ ...prev, deliveryTime: `${days} dias` }));
+    };
+
+    const formatDisplayDateForInput = (dateStr: string): string => {
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return '';
+        const [day, month, year] = dateStr.split('/');
+        return `${year}-${month}-${day}`;
     };
 
 
@@ -336,10 +527,11 @@ const App: React.FC = () => {
                             <SectionTitle title="Contratante" className="mb-2" />
                             <div className="space-y-4">
                                 <InputField label="Nome Completo" name="clientName" value={formData.clientName} onChange={handleInputChange} placeholder="Ex: Lygia Barros Fagundes"/>
-                                <InputField label="Endereço" name="clientAddress" value={formData.clientAddress} onChange={handleInputChange} placeholder="Ex: Rua Aquário, 259"/>
-                                <InputField label="Bairro" name="clientNeighborhood" value={formData.clientNeighborhood} onChange={handleInputChange} placeholder="Ex: Vila Guiomar"/>
-                                <InputField label="Cidade / CEP" name="clientCity" value={formData.clientCity} onChange={handleInputChange} placeholder="Ex: Santo André/SP - CEP: 09071-070"/>
-                                <InputField label="Telefone" name="clientPhone" value={formData.clientPhone} onChange={handleInputChange} placeholder="Ex: 11 94433-2782"/>
+                                <InputField label="CEP" name="clientCep" value={formData.clientCep} onChange={handleInputChange} onBlur={handleCepBlur} placeholder="Ex: 09251-040"/>
+                                <InputField label="Endereço" name="clientAddress" value={formData.clientAddress} onChange={handleInputChange} placeholder="Ex: Avenida Araucária, 997" disabled={isFetchingCep} />
+                                <InputField label="Bairro" name="clientNeighborhood" value={formData.clientNeighborhood} onChange={handleInputChange} placeholder="Ex: Parque Novo Oratório" disabled={isFetchingCep} />
+                                <InputField label="Cidade / Estado" name="clientCity" value={formData.clientCity} onChange={handleInputChange} placeholder="Ex: Santo André/SP" disabled={isFetchingCep} />
+                                <InputField label="Telefone" name="clientPhone" value={formData.clientPhone} onChange={handleInputChange} placeholder="Ex: (11) 2036-0010"/>
                                 <InputField label="CPF" name="clientCpf" value={formData.clientCpf} onChange={handleInputChange} placeholder="Ex: 304.121.098-32"/>
                                 <InputField label="RG" name="clientRg" value={formData.clientRg} onChange={handleInputChange} placeholder="Ex: 28.152.649-7"/>
                             </div>
@@ -380,9 +572,60 @@ const App: React.FC = () => {
                             <SectionTitle title="Valor e Pagamento" className="mb-2"/>
                              <div className="space-y-4">
                                 <InputField label="Valor Total (R$)" name="productValue" value={formData.productValue} onChange={handleInputChange} placeholder="Ex: 2000,00"/>
-                                <InputField label="Valor por Extenso" name="productValueText" value={formData.productValueText} onChange={handleInputChange} placeholder="Ex: Dois mil reais"/>
+                                <InputField label="Valor por Extenso" name="productValueText" value={formData.productValueText} onChange={() => {}} placeholder="Gerado automaticamente" readOnly className="bg-gray-100"/>
                                 <InputField label="Forma de Pagamento" name="paymentMethod" value={formData.paymentMethod} onChange={handleInputChange} placeholder="Ex: Sinal de R$1.000..."/>
-                                <InputField label="Prazo de Entrega" name="deliveryTime" value={formData.deliveryTime} onChange={handleInputChange} placeholder="Ex: 20 dias"/>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Prazo de Entrega</label>
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex items-center">
+                                            <input type="radio" name="deliveryType" value="days" checked={deliveryTimeType === 'days'} onChange={handleDeliveryTypeChange} className="form-radio h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500"/>
+                                            <span className="ml-2 text-sm text-gray-700">Em dias</span>
+                                        </label>
+                                        <label className="flex items-center">
+                                            <input type="radio" name="deliveryType" value="date" checked={deliveryTimeType === 'date'} onChange={handleDeliveryTypeChange} className="form-radio h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500"/>
+                                            <span className="ml-2 text-sm text-gray-700">Data específica</span>
+                                        </label>
+                                    </div>
+
+                                    {deliveryTimeType === 'days' && (
+                                        <div className="mt-2">
+                                            <InputField 
+                                                label="Número de Dias"
+                                                name="deliveryTime" 
+                                                value={formData.deliveryTime.replace(/\s*dias/i, '')}
+                                                onChange={handleInputChange} 
+                                                placeholder="Ex: 20"
+                                                type="number"
+                                            />
+                                            <div className="mt-2 flex gap-2">
+                                                {[20, 25, 30].map(days => (
+                                                    <button 
+                                                        key={days}
+                                                        type="button"
+                                                        onClick={() => handleQuickDays(days)}
+                                                        className="px-3 py-1 text-sm font-medium text-sky-700 bg-sky-100 rounded-md hover:bg-sky-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-sky-500 transition-colors"
+                                                    >
+                                                        {days} dias
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {deliveryTimeType === 'date' && (
+                                        <div className="mt-2">
+                                            <label htmlFor="deliveryDate" className="block text-sm font-medium text-gray-700">Data Específica</label>
+                                            <input
+                                                type="date"
+                                                id="deliveryDate"
+                                                name="deliveryTime"
+                                                value={formatDisplayDateForInput(formData.deliveryTime)}
+                                                onChange={handleInputChange}
+                                                className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </form>
