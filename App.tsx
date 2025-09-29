@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 
 // --- Reusable UI Components ---
@@ -309,8 +310,8 @@ const App: React.FC = () => {
         if (name === 'clientCpf') {
             formattedValue = numbersOnly
                 .replace(/(\d{3})(\d)/, '$1.$2')
-                .replace(/(\d{3})(\d)/, '$1.$2')
-                .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+                .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+                .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})/, '$1.$2.$3-$4')
                 .slice(0, 14);
         } else if (name === 'clientPhone') {
              if (numbersOnly.length <= 10) {
