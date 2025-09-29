@@ -1,5 +1,5 @@
 {
-  "name": "Gerador de pedidos",
-  "description": "Um layout de pedido de compra profissional e limpo, baseado nos dados fornecidos da empresa e do cliente, projetado para oferecer clareza e facilidade de uso",
+  "name": "Purchase Order Generator",
+  "description": "A professional and clean purchase order layout based on provided company and client details, designed for clarity and ease of use.",
   "requestFramePermissions": []
 }

@@ -308,11 +308,16 @@ const App: React.FC = () => {
         const numbersOnly = value.replace(/\D/g, '');
 
         if (name === 'clientCpf') {
-            formattedValue = numbersOnly
-                .replace(/(\d{3})(\d)/, '$1.$2')
-                .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-                .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})/, '$1.$2.$3-$4')
-                .slice(0, 14);
+            const v = numbersOnly.slice(0, 11);
+            if (v.length <= 3) {
+                formattedValue = v;
+            } else if (v.length <= 6) {
+                formattedValue = `${v.slice(0, 3)}.${v.slice(3)}`;
+            } else if (v.length <= 9) {
+                formattedValue = `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6)}`;
+            } else {
+                formattedValue = `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9)}`;
+            }
         } else if (name === 'clientPhone') {
              if (numbersOnly.length <= 10) {
                 formattedValue = numbersOnly
@@ -330,14 +335,14 @@ const App: React.FC = () => {
                 .replace(/(\d{5})(\d)/, '$1-$2')
                 .slice(0, 9);
         } else if (name === 'date') {
-            let tempValue = numbersOnly;
-            if (tempValue.length > 2) {
-                tempValue = `${tempValue.slice(0, 2)}/${tempValue.slice(2)}`;
+            const v = numbersOnly.slice(0, 8);
+            if (v.length <= 2) {
+                formattedValue = v;
+            } else if (v.length <= 4) {
+                formattedValue = `${v.slice(0, 2)}/${v.slice(2)}`;
+            } else {
+                formattedValue = `${v.slice(0, 2)}/${v.slice(2, 4)}/${v.slice(4)}`;
             }
-            if (tempValue.length > 5) {
-                tempValue = `${tempValue.slice(0, 5)}/${tempValue.slice(5)}`;
-            }
-            formattedValue = tempValue.slice(0, 10);
         } else if (name === 'deliveryTime') {
             if (deliveryTimeType === 'date') {
                  if (value) { // value from date picker is 'YYYY-MM-DD'
