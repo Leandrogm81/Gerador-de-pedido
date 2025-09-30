@@ -160,7 +160,7 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null; includ
 // --- Helper Functions ---
 
 const numberToWordsPtBr = (num: number): string => {
-    if (num === null || num === undefined) return '';
+    if (!isFinite(num)) return '';
     
     const units = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
     const teens = ["dez", "onze", "doze", "treze", "catorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
