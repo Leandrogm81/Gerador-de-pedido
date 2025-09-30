@@ -126,9 +126,24 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null; includ
             </section>
         </main>
         
-        {includeSignature && (
-            <section className="mt-20 text-center">
-                <div className="inline-block w-72">
+        <section className="mt-20 flex flex-wrap justify-around items-start gap-x-8 gap-y-12">
+            {/* Company Signature (Contratado) */}
+            <div className="text-center w-72">
+                <div className="h-20 flex items-end justify-center pb-1">
+                    {data.companySignatureDataUrl && (
+                        <img src={data.companySignatureDataUrl} alt="Assinatura do Contratado" className="max-h-full w-auto object-contain" />
+                    )}
+                </div>
+                <div className="border-t-2 border-gray-800 pt-2">
+                    <p className="text-sm font-semibold h-5">Leandro Gobbo Menezes</p>
+                    <p className="text-xs text-gray-600">Assinatura do Contratado</p>
+                    <p className="text-xs text-gray-600">CPF: 295.948.788-51</p>
+                </div>
+            </div>
+
+            {/* Client Signature (Contratante) */}
+            {includeSignature && (
+                <div className="text-center w-72">
                     <div className="h-20 flex items-end justify-center pb-1">
                         {data.signatureDataUrl && (
                             <img src={data.signatureDataUrl} alt="Assinatura do Contratante" className="max-h-full w-auto object-contain" />
@@ -140,8 +155,8 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null; includ
                         {data.clientCpf && <p className="text-xs text-gray-600">CPF: {data.clientCpf}</p>}
                     </div>
                 </div>
-            </section>
-        )}
+            )}
+        </section>
 
         <footer className="text-left text-xs pt-8 mt-10">
             <div className="space-y-px">
@@ -424,6 +439,7 @@ const App: React.FC = () => {
         paymentMethod: '',
         deliveryTime: '',
         signatureDataUrl: '',
+        companySignatureDataUrl: '',
     };
 
     const [formData, setFormData] = useState(initialData);
@@ -435,6 +451,7 @@ const App: React.FC = () => {
     const [installments, setInstallments] = useState<number>(2);
     const [includeSignature, setIncludeSignature] = useState(false);
     const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+    const [isCompanySignatureModalOpen, setIsCompanySignatureModalOpen] = useState(false);
 
     const [savedOrders, setSavedOrders] = useState<any[]>([]);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
@@ -767,9 +784,10 @@ const App: React.FC = () => {
     const handleLoadOrder = (orderId: string) => {
         const orderToLoad = savedOrders.find(order => order.id === orderId);
         if (orderToLoad) {
-            setFormData(orderToLoad);
-            setIncludeSignature(orderToLoad.includeSignature || false);
-            setCurrentOrderId(orderToLoad.id);
+            const completeOrderData = { ...initialData, ...orderToLoad };
+            setFormData(completeOrderData);
+            setIncludeSignature(completeOrderData.includeSignature || false);
+            setCurrentOrderId(completeOrderData.id);
             setIsOrdersPanelOpen(false);
         }
     };
@@ -835,6 +853,16 @@ const App: React.FC = () => {
     const handleRemoveSignature = () => {
         setFormData(prev => ({ ...prev, signatureDataUrl: '' }));
     };
+
+    const handleSaveCompanySignature = (dataUrl: string) => {
+        setFormData(prev => ({ ...prev, companySignatureDataUrl: dataUrl }));
+        setIsCompanySignatureModalOpen(false);
+    };
+
+    const handleRemoveCompanySignature = () => {
+        setFormData(prev => ({ ...prev, companySignatureDataUrl: '' }));
+    };
+
 
     return (
         <div className="bg-gray-100 min-h-screen">
@@ -1090,7 +1118,7 @@ const App: React.FC = () => {
                                 </div>
                                 <div className="ml-3 text-sm">
                                     <label htmlFor="includeSignature" className="font-medium text-gray-700">
-                                        Incluir assinatura
+                                        Incluir assinatura do cliente
                                     </label>
                                     <p id="signature-description" className="text-gray-500">
                                         Adiciona um campo para a assinatura do cliente no final do pedido.
@@ -1099,8 +1127,8 @@ const App: React.FC = () => {
                             </div>
 
                             {includeSignature && (
-                                <div className="mt-4 p-4 border border-gray-200 rounded-lg">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Assinatura Digital</label>
+                                <div className="p-4 border border-gray-200 rounded-lg">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Assinatura Digital (Cliente)</label>
                                     {formData.signatureDataUrl ? (
                                         <div className="flex flex-col items-start gap-3">
                                             <div className="p-2 border rounded-md bg-gray-50">
@@ -1121,11 +1149,38 @@ const App: React.FC = () => {
                                             onClick={() => setIsSignatureModalOpen(true)}
                                             className="w-full px-4 py-2 text-sm font-medium text-sky-700 bg-sky-100 rounded-md hover:bg-sky-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
                                         >
-                                            Coletar Assinatura Digital
+                                            Coletar Assinatura do Cliente
                                         </button>
                                     )}
                                 </div>
                             )}
+
+                             <div className="mt-4 p-4 border border-gray-200 rounded-lg">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Assinatura do Responsável (Contratado)</label>
+                                {formData.companySignatureDataUrl ? (
+                                    <div className="flex flex-col items-start gap-3">
+                                        <div className="p-2 border rounded-md bg-gray-50">
+                                            <img src={formData.companySignatureDataUrl} alt="Assinatura do Responsável" className="h-16" />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => setIsCompanySignatureModalOpen(true)} className="px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 rounded-md hover:bg-blue-200">
+                                                Alterar
+                                            </button>
+                                            <button type="button" onClick={handleRemoveCompanySignature} className="px-3 py-1 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200">
+                                                Remover
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCompanySignatureModalOpen(true)}
+                                        className="w-full px-4 py-2 text-sm font-medium text-sky-700 bg-sky-100 rounded-md hover:bg-sky-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
+                                    >
+                                        Coletar Assinatura do Responsável
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                     </form>
@@ -1179,6 +1234,11 @@ const App: React.FC = () => {
                 isOpen={isSignatureModalOpen}
                 onClose={() => setIsSignatureModalOpen(false)}
                 onSave={handleSaveSignature}
+            />
+            <SignatureModal
+                isOpen={isCompanySignatureModalOpen}
+                onClose={() => setIsCompanySignatureModalOpen(false)}
+                onSave={handleSaveCompanySignature}
             />
         </div>
     );
