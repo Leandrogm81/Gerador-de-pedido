@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 
 // --- Reusable UI Components ---
 
@@ -59,7 +59,7 @@ const SectionHeader: React.FC<{ title: string }> = ({ title }) => (
 
 // --- Purchase Order Preview Component ---
 
-const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null }> = ({ data, logoSrc }) => (
+const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null; includeSignature: boolean }> = ({ data, logoSrc, includeSignature }) => (
     <div id="print-area" className="w-full mx-auto bg-white shadow-2xl p-6 sm:p-12 border border-gray-300 font-sans text-sm text-gray-800">
         <header className="text-center mb-10">
             <Logo logoSrc={logoSrc} />
@@ -126,6 +126,23 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null }> = ({
             </section>
         </main>
         
+        {includeSignature && (
+            <section className="mt-20 text-center">
+                <div className="inline-block w-72">
+                    <div className="h-20 flex items-end justify-center pb-1">
+                        {data.signatureDataUrl && (
+                            <img src={data.signatureDataUrl} alt="Assinatura do Contratante" className="max-h-full w-auto object-contain" />
+                        )}
+                    </div>
+                    <div className="border-t-2 border-gray-800 pt-2">
+                        <p className="text-sm font-semibold h-5">{data.clientName || ''}</p>
+                        <p className="text-xs text-gray-600">Assinatura do Contratante</p>
+                        {data.clientCpf && <p className="text-xs text-gray-600">CPF: {data.clientCpf}</p>}
+                    </div>
+                </div>
+            </section>
+        )}
+
         <footer className="text-left text-xs pt-8 mt-10">
             <div className="space-y-px">
                 <p>Razão Social: Leandro Gobbo Menezes Me / Nome Fantasia: Toldos Fortaleza</p>
@@ -138,6 +155,7 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null }> = ({
         </footer>
     </div>
 );
+
 
 // --- Helper Functions ---
 
@@ -210,6 +228,175 @@ const numberToWordsPtBr = (num: number): string => {
 };
 
 
+// --- Signature Components ---
+
+const SignaturePad = forwardRef<
+    { clear: () => void; getSignature: () => string | undefined; },
+    { width: number; height: number; }
+>(({ width, height }, ref) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const isDrawing = useRef(false);
+    const lastPos = useRef<{ x: number; y: number } | null>(null);
+
+    const getCoords = (e: MouseEvent | TouchEvent): { x: number; y: number } | null => {
+        if (!canvasRef.current) return null;
+        const rect = canvasRef.current.getBoundingClientRect();
+        if (e instanceof MouseEvent) {
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+        if (e.touches && e.touches[0]) {
+            return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+        }
+        return null;
+    };
+
+    const startDrawing = (e: MouseEvent | TouchEvent) => {
+        e.preventDefault();
+        const coords = getCoords(e);
+        if (!coords) return;
+        isDrawing.current = true;
+        lastPos.current = coords;
+    };
+
+    const draw = (e: MouseEvent | TouchEvent) => {
+        if (!isDrawing.current) return;
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        const coords = getCoords(e);
+        if (!ctx || !coords || !lastPos.current) return;
+
+        ctx.beginPath();
+        ctx.moveTo(lastPos.current.x, lastPos.current.y);
+        ctx.lineTo(coords.x, coords.y);
+        ctx.stroke();
+        lastPos.current = coords;
+    };
+
+    const stopDrawing = () => {
+        isDrawing.current = false;
+        lastPos.current = null;
+    };
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.scale(dpr, dpr);
+        
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseleave', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing);
+        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchend', stopDrawing);
+        
+        return () => {
+            canvas.removeEventListener('mousedown', startDrawing);
+            canvas.removeEventListener('mousemove', draw);
+            canvas.removeEventListener('mouseup', stopDrawing);
+            canvas.removeEventListener('mouseleave', stopDrawing);
+            canvas.removeEventListener('touchstart', startDrawing);
+            canvas.removeEventListener('touchmove', draw);
+            canvas.removeEventListener('touchend', stopDrawing);
+        };
+    }, [width, height]);
+    
+    useImperativeHandle(ref, () => ({
+        clear: () => {
+            const canvas = canvasRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (ctx && canvas) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        },
+        getSignature: () => {
+            const canvas = canvasRef.current;
+            if (canvas) {
+                const context = canvas.getContext('2d');
+                if(!context) return undefined;
+                const pixelBuffer = new Uint32Array(
+                    context.getImageData(0, 0, canvas.width, canvas.height).data.buffer
+                );
+                const isEmpty = !pixelBuffer.some(color => color !== 0);
+                if (isEmpty) return undefined;
+
+                return canvas.toDataURL('image/png');
+            }
+            return undefined;
+        }
+    }));
+
+    return (
+        <canvas
+            ref={canvasRef}
+            width={width}
+            height={height}
+            className="border border-gray-400 rounded-lg bg-white touch-none"
+            style={{ width, height }}
+        />
+    );
+});
+
+const SignatureModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (dataUrl: string) => void;
+}> = ({ isOpen, onClose, onSave }) => {
+    const signaturePadRef = useRef<{ clear: () => void; getSignature: () => string | undefined }>(null);
+
+    const handleSave = () => {
+        if (signaturePadRef.current) {
+            const signature = signaturePadRef.current.getSignature();
+            if (signature) {
+                onSave(signature);
+            } else {
+                alert("Por favor, forneça uma assinatura.");
+            }
+        }
+    };
+    
+    const handleClear = () => {
+        signaturePadRef.current?.clear();
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" role="dialog" aria-modal="true">
+            <div className="bg-white rounded-lg shadow-xl p-4 sm:p-6 w-full max-w-lg">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">Assine aqui</h3>
+                <div className="flex justify-center mb-4">
+                    <SignaturePad ref={signaturePadRef} width={450} height={200} />
+                </div>
+                <div className="flex flex-col sm:flex-row justify-end gap-3">
+                    <button onClick={handleClear} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">
+                        Limpar
+                    </button>
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">
+                        Cancelar
+                    </button>
+                    <button onClick={handleSave} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 rounded-md hover:bg-sky-700">
+                        Salvar Assinatura
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 // --- Main App Component ---
 
 const initialProduct = {
@@ -236,6 +423,7 @@ const App: React.FC = () => {
         productValueText: '',
         paymentMethod: '',
         deliveryTime: '',
+        signatureDataUrl: '',
     };
 
     const [formData, setFormData] = useState(initialData);
@@ -245,6 +433,8 @@ const App: React.FC = () => {
     const [deliveryTimeType, setDeliveryTimeType] = useState<'days' | 'date'>('days');
     const [paymentOption, setPaymentOption] = useState<'avista' | 'parcelado' | 'personalizado'>('avista');
     const [installments, setInstallments] = useState<number>(2);
+    const [includeSignature, setIncludeSignature] = useState(false);
+    const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
     const [savedOrders, setSavedOrders] = useState<any[]>([]);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
@@ -541,6 +731,7 @@ const App: React.FC = () => {
         handleRemoveLogo();
         setPaymentOption('avista');
         setDeliveryTimeType('days');
+        setIncludeSignature(false);
     };
 
     const handlePaymentOptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -557,7 +748,7 @@ const App: React.FC = () => {
 
     const handleSaveOrder = () => {
         let newOrders;
-        const orderToSave = { ...formData, id: currentOrderId || Date.now().toString() };
+        const orderToSave = { ...formData, id: currentOrderId || Date.now().toString(), includeSignature };
         
         if (currentOrderId) {
             newOrders = savedOrders.map(order => 
@@ -577,6 +768,7 @@ const App: React.FC = () => {
         const orderToLoad = savedOrders.find(order => order.id === orderId);
         if (orderToLoad) {
             setFormData(orderToLoad);
+            setIncludeSignature(orderToLoad.includeSignature || false);
             setCurrentOrderId(orderToLoad.id);
             setIsOrdersPanelOpen(false);
         }
@@ -633,6 +825,15 @@ const App: React.FC = () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+    };
+    
+    const handleSaveSignature = (dataUrl: string) => {
+        setFormData(prev => ({ ...prev, signatureDataUrl: dataUrl }));
+        setIsSignatureModalOpen(false);
+    };
+
+    const handleRemoveSignature = () => {
+        setFormData(prev => ({ ...prev, signatureDataUrl: '' }));
     };
 
     return (
@@ -872,12 +1073,67 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+
+                         <div>
+                            <SectionTitle title="Opções Adicionais" className="mb-2"/>
+                             <div className="relative flex items-start mb-4">
+                                <div className="flex items-center h-5">
+                                    <input
+                                        id="includeSignature"
+                                        aria-describedby="signature-description"
+                                        name="includeSignature"
+                                        type="checkbox"
+                                        checked={includeSignature}
+                                        onChange={(e) => setIncludeSignature(e.target.checked)}
+                                        className="focus:ring-sky-500 h-4 w-4 text-sky-600 border-gray-300 rounded"
+                                    />
+                                </div>
+                                <div className="ml-3 text-sm">
+                                    <label htmlFor="includeSignature" className="font-medium text-gray-700">
+                                        Incluir assinatura
+                                    </label>
+                                    <p id="signature-description" className="text-gray-500">
+                                        Adiciona um campo para a assinatura do cliente no final do pedido.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {includeSignature && (
+                                <div className="mt-4 p-4 border border-gray-200 rounded-lg">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Assinatura Digital</label>
+                                    {formData.signatureDataUrl ? (
+                                        <div className="flex flex-col items-start gap-3">
+                                            <div className="p-2 border rounded-md bg-gray-50">
+                                                <img src={formData.signatureDataUrl} alt="Assinatura" className="h-16" />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button type="button" onClick={() => setIsSignatureModalOpen(true)} className="px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 rounded-md hover:bg-blue-200">
+                                                    Alterar
+                                                </button>
+                                                <button type="button" onClick={handleRemoveSignature} className="px-3 py-1 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200">
+                                                    Remover
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsSignatureModalOpen(true)}
+                                            className="w-full px-4 py-2 text-sm font-medium text-sky-700 bg-sky-100 rounded-md hover:bg-sky-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
+                                        >
+                                            Coletar Assinatura Digital
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                     </form>
                 </div>
                 
                 {/* Preview Section */}
                 <div className="lg:col-span-3 bg-gray-200 p-4 sm:p-8 rounded-lg shadow-inner overflow-y-auto lg:max-h-[calc(100vh-120px)]">
-                    <PurchaseOrderPreview data={formData} logoSrc={logoSrc} />
+                    <PurchaseOrderPreview data={formData} logoSrc={logoSrc} includeSignature={includeSignature} />
                 </div>
             </main>
 
@@ -918,6 +1174,12 @@ const App: React.FC = () => {
                 </div>
             </div>
             {isOrdersPanelOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-30" onClick={() => setIsOrdersPanelOpen(false)}></div>}
+        
+            <SignatureModal
+                isOpen={isSignatureModalOpen}
+                onClose={() => setIsSignatureModalOpen(false)}
+                onSave={handleSaveSignature}
+            />
         </div>
     );
 };
