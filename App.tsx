@@ -91,7 +91,11 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null; includ
                     <p>Bairro: {data.clientNeighborhood}</p>
                     <p>Cidade: {data.clientCity}</p>
                     <p>Telefone: {data.clientPhone}</p>
-                    <p>CPF: {data.clientCpf} / RG: {data.clientRg}</p>
+                    {data.clientCnpj ? (
+                        <p>CNPJ: {data.clientCnpj} / Inscrição Estadual: {data.clientIe}</p>
+                    ) : (
+                        <p>CPF: {data.clientCpf} / RG: {data.clientRg}</p>
+                    )}
                 </div>
             </section>
 
@@ -152,7 +156,11 @@ const PurchaseOrderPreview: React.FC<{ data: any; logoSrc: string | null; includ
                     <div className="border-t-2 border-gray-800 pt-2">
                         <p className="text-sm font-semibold h-5">{data.clientName || ''}</p>
                         <p className="text-xs text-gray-600">Assinatura do Contratante</p>
-                        {data.clientCpf && <p className="text-xs text-gray-600">CPF: {data.clientCpf}</p>}
+                        {data.clientCnpj ? (
+                            <p className="text-xs text-gray-600">CNPJ: {data.clientCnpj}</p>
+                        ) : (
+                           data.clientCpf && <p className="text-xs text-gray-600">CPF: {data.clientCpf}</p>
+                        )}
                     </div>
                 </div>
             )}
@@ -433,6 +441,8 @@ const App: React.FC = () => {
         clientPhone: '',
         clientCpf: '',
         clientRg: '',
+        clientCnpj: '',
+        clientIe: '',
         products: [{ ...initialProduct }],
         productValue: '',
         productValueText: '',
@@ -452,6 +462,7 @@ const App: React.FC = () => {
     const [includeSignature, setIncludeSignature] = useState(false);
     const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
     const [isCompanySignatureModalOpen, setIsCompanySignatureModalOpen] = useState(false);
+    const [clientType, setClientType] = useState<'pf' | 'pj'>('pf');
 
     const [savedOrders, setSavedOrders] = useState<any[]>([]);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
@@ -524,6 +535,19 @@ const App: React.FC = () => {
                 formattedValue = `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6)}`;
             } else {
                 formattedValue = `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9)}`;
+            }
+        } else if (name === 'clientCnpj') {
+            const v = numbersOnly.slice(0, 14);
+            if (v.length <= 2) {
+                formattedValue = v;
+            } else if (v.length <= 5) {
+                formattedValue = `${v.slice(0, 2)}.${v.slice(2)}`;
+            } else if (v.length <= 8) {
+                formattedValue = `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5)}`;
+            } else if (v.length <= 12) {
+                formattedValue = `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8)}`;
+            } else {
+                formattedValue = `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8, 12)}-${v.slice(12)}`;
             }
         } else if (name === 'clientPhone') {
              if (numbersOnly.length <= 10) {
@@ -749,6 +773,7 @@ const App: React.FC = () => {
         setPaymentOption('avista');
         setDeliveryTimeType('days');
         setIncludeSignature(false);
+        setClientType('pf');
     };
 
     const handlePaymentOptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -765,7 +790,7 @@ const App: React.FC = () => {
 
     const handleSaveOrder = () => {
         let newOrders;
-        const orderToSave = { ...formData, id: currentOrderId || Date.now().toString(), includeSignature };
+        const orderToSave = { ...formData, id: currentOrderId || Date.now().toString(), includeSignature, clientType };
         
         if (currentOrderId) {
             newOrders = savedOrders.map(order => 
@@ -787,6 +812,7 @@ const App: React.FC = () => {
             const completeOrderData = { ...initialData, ...orderToLoad };
             setFormData(completeOrderData);
             setIncludeSignature(completeOrderData.includeSignature || false);
+            setClientType(completeOrderData.clientType || 'pf');
             setCurrentOrderId(completeOrderData.id);
             setIsOrdersPanelOpen(false);
         }
@@ -806,19 +832,24 @@ const App: React.FC = () => {
 
     const handleDownloadTxt = () => {
         const {
-            date, clientName, clientAddress, clientNeighborhood, clientCity, clientPhone, clientCpf, clientRg,
+            date, clientName, clientAddress, clientNeighborhood, clientCity, clientPhone, clientCpf, clientRg, clientCnpj, clientIe,
             products, productValue, productValueText, paymentMethod, deliveryTime
         } = formData;
 
         let content = `PEDIDO DE COMPRA\n`;
         content += `Data: ${date}\n\n`;
         content += `--- DADOS DO CONTRATANTE ---\n`;
-        content += `Nome: ${clientName || ''}\n`;
+        content += `Nome / Razão Social: ${clientName || ''}\n`;
         content += `Endereço: ${clientAddress || ''}\n`;
         content += `Bairro: ${clientNeighborhood || ''}\n`;
         content += `Cidade: ${clientCity || ''}\n`;
         content += `Telefone: ${clientPhone || ''}\n`;
-        content += `CPF: ${clientCpf || ''} / RG: ${clientRg || ''}\n\n`;
+        if (clientType === 'pj') {
+            content += `CNPJ: ${clientCnpj || ''}\n`;
+            content += `Inscrição Estadual: ${clientIe || ''}\n\n`;
+        } else {
+            content += `CPF: ${clientCpf || ''} / RG: ${clientRg || ''}\n\n`;
+        }
         content += `--- PRODUTO(S) ---\n`;
         products.forEach((p, i) => {
             content += `Item ${i + 1}:\n`;
@@ -945,14 +976,34 @@ const App: React.FC = () => {
                         <div>
                             <SectionTitle title="Contratante" className="mb-2" />
                             <div className="space-y-4">
-                                <InputField label="Nome Completo" name="clientName" value={formData.clientName} onChange={handleInputChange} placeholder="Ex: Lygia Barros Fagundes"/>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="radio" name="clientType" value="pf" checked={clientType === 'pf'} onChange={(e) => setClientType(e.target.value as any)} className="form-radio h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500"/>
+                                        <span className="ml-2 text-sm text-gray-700">Pessoa Física</span>
+                                    </label>
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="radio" name="clientType" value="pj" checked={clientType === 'pj'} onChange={(e) => setClientType(e.target.value as any)} className="form-radio h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500"/>
+                                        <span className="ml-2 text-sm text-gray-700">Pessoa Jurídica</span>
+                                    </label>
+                                </div>
+                                <InputField label="Nome Completo / Razão Social" name="clientName" value={formData.clientName} onChange={handleInputChange} placeholder="Ex: Lygia Barros Fagundes / Toldos Fortaleza"/>
                                 <InputField label="CEP" name="clientCep" value={formData.clientCep} onChange={handleInputChange} onBlur={handleCepBlur} placeholder="Ex: 09251-040" type="tel"/>
                                 <InputField label="Endereço" name="clientAddress" value={formData.clientAddress} onChange={handleInputChange} placeholder="Ex: Avenida Araucária, 997" disabled={isFetchingCep} />
                                 <InputField label="Bairro" name="clientNeighborhood" value={formData.clientNeighborhood} onChange={handleInputChange} placeholder="Ex: Parque Novo Oratório" disabled={isFetchingCep} />
                                 <InputField label="Cidade / Estado" name="clientCity" value={formData.clientCity} onChange={handleInputChange} placeholder="Ex: Santo André/SP" disabled={isFetchingCep} />
                                 <InputField label="Telefone" name="clientPhone" value={formData.clientPhone} onChange={handleInputChange} placeholder="Ex: (11) 2036-0010" type="tel"/>
-                                <InputField label="CPF" name="clientCpf" value={formData.clientCpf} onChange={handleInputChange} placeholder="Ex: 304.121.098-32" type="tel"/>
-                                <InputField label="RG" name="clientRg" value={formData.clientRg} onChange={handleInputChange} placeholder="Ex: 28.152.649-7"/>
+                                
+                                {clientType === 'pf' ? (
+                                    <>
+                                        <InputField label="CPF" name="clientCpf" value={formData.clientCpf} onChange={handleInputChange} placeholder="Ex: 304.121.098-32" type="tel"/>
+                                        <InputField label="RG" name="clientRg" value={formData.clientRg} onChange={handleInputChange} placeholder="Ex: 28.152.649-7"/>
+                                    </>
+                                ) : (
+                                    <>
+                                        <InputField label="CNPJ" name="clientCnpj" value={formData.clientCnpj} onChange={handleInputChange} placeholder="Ex: 07.173.998/0001-75" type="tel"/>
+                                        <InputField label="Inscrição Estadual" name="clientIe" value={formData.clientIe} onChange={handleInputChange} placeholder="Ex: 626.107.689.114"/>
+                                    </>
+                                )}
                             </div>
                         </div>
                         <div>
